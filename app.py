@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from src.matching import verify_core_fields, determine_overall_result
+from src.warning_check import verify_government_warning
 
 
 st.set_page_config(
@@ -17,7 +18,7 @@ st.write(
 )
 
 st.info(
-    "Phase 2: Core field matching is enabled. OCR and government warning validation will be added later."
+    "Phase 3: Core field matching and government warning validation are enabled. OCR will be added later."
 )
 
 st.divider()
@@ -122,18 +123,14 @@ if verify_button:
             net_contents=net_contents,
         )
 
-        results.append(
-            {
-                "Check": "Government Warning",
-                "Expected": "Required" if warning_required else "Not required",
-                "Detected": "Not checked yet",
-                "Result": "Not implemented",
-                "Notes": "Warning validation will be added in Phase 3."
-            }
+        warning_result = verify_government_warning(
+            detected_text=detected_text,
+            warning_required=warning_required,
         )
 
-        core_results = results[:-1]
-        overall_result = determine_overall_result(core_results)
+        results.append(warning_result)
+
+        overall_result = determine_overall_result(results)
 
         st.subheader("Overall Result")
 
@@ -148,5 +145,5 @@ if verify_button:
         st.dataframe(results_df, use_container_width=True)
 
         st.caption(
-            "Note: Government warning validation is intentionally deferred to Phase 3."
+            "Note: This prototype checks warning text and capitalization. It does not verify font size, bold formatting, or label placement."
         )

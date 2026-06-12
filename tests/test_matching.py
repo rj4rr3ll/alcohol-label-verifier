@@ -9,6 +9,7 @@ from src.matching import (
     verify_alcohol_content,
     verify_net_contents,
 )
+from src.warning_check import verify_government_warning
 
 
 class TestMatchingLogic(unittest.TestCase):
@@ -53,6 +54,39 @@ class TestMatchingLogic(unittest.TestCase):
         detected = "750 mL"
         result = verify_net_contents("750 mL", detected)
         self.assertEqual(result["Result"], PASS)
+
+    def test_government_warning_correct(self):
+        detected = (
+            "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not "
+            "drink alcoholic beverages during pregnancy because of the risk of birth defects. "
+            "(2) Consumption of alcoholic beverages impairs your ability to drive a car or "
+            "operate machinery, and may cause health problems."
+        )
+        result = verify_government_warning(detected, warning_required=True)
+        self.assertEqual(result["Result"], PASS)
+
+    def test_government_warning_title_case_fails(self):
+        detected = (
+            "Government Warning: (1) According to the Surgeon General, women should not "
+            "drink alcoholic beverages during pregnancy because of the risk of birth defects. "
+            "(2) Consumption of alcoholic beverages impairs your ability to drive a car or "
+            "operate machinery, and may cause health problems."
+        )
+        result = verify_government_warning(detected, warning_required=True)
+        self.assertEqual(result["Result"], FAIL)
+
+    def test_government_warning_missing_fails(self):
+        detected = "OLD TOM DISTILLERY\nKentucky Straight Bourbon Whiskey\n45% Alc./Vol.\n750 mL"
+        result = verify_government_warning(detected, warning_required=True)
+        self.assertEqual(result["Result"], FAIL)
+
+    def test_government_warning_partial_requires_review(self):
+        detected = (
+            "GOVERNMENT WARNING: According to the Surgeon General, women should not "
+            "drink alcoholic beverages during pregnancy."
+        )
+        result = verify_government_warning(detected, warning_required=True)
+        self.assertEqual(result["Result"], REVIEW)
 
 
 if __name__ == "__main__":
