@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 
+from src.matching import verify_core_fields, determine_overall_result
+
+
 st.set_page_config(
     page_title="AI-Powered Alcohol Label Verification App",
     page_icon="🏷️",
@@ -14,7 +17,7 @@ st.write(
 )
 
 st.info(
-    "Phase 1: Manual label text entry is enabled. OCR will be added in a later phase."
+    "Phase 2: Core field matching is enabled. OCR and government warning validation will be added later."
 )
 
 st.divider()
@@ -31,6 +34,9 @@ with st.sidebar:
     st.warning(
         "Prototype only: Human compliance review remains required."
     )
+    st.caption(
+        "Current phase: Manual text entry with automated core field matching."
+    )
 
 # -----------------------------
 # Label Upload Section
@@ -40,7 +46,7 @@ st.header("1. Upload Label Artwork")
 uploaded_file = st.file_uploader(
     "Upload a label image",
     type=["png", "jpg", "jpeg"],
-    help="OCR is not active yet. Upload preview only in Phase 1."
+    help="OCR is not active yet. Upload preview only in Phase 2."
 )
 
 if uploaded_file is not None:
@@ -98,7 +104,7 @@ with col2:
 st.divider()
 
 # -----------------------------
-# Verification Placeholder
+# Verification Results
 # -----------------------------
 st.header("4. Verification Results")
 
@@ -108,49 +114,39 @@ if verify_button:
     if not detected_text.strip():
         st.error("Please enter detected label text before verifying.")
     else:
-        results = [
-            {
-                "Check": "Brand Name",
-                "Expected": brand_name,
-                "Detected": "Not checked yet",
-                "Result": "Not implemented",
-                "Notes": "Matching logic will be added in Phase 2."
-            },
-            {
-                "Check": "Class/Type",
-                "Expected": class_type,
-                "Detected": "Not checked yet",
-                "Result": "Not implemented",
-                "Notes": "Matching logic will be added in Phase 2."
-            },
-            {
-                "Check": "Alcohol Content",
-                "Expected": alcohol_content,
-                "Detected": "Not checked yet",
-                "Result": "Not implemented",
-                "Notes": "Matching logic will be added in Phase 2."
-            },
-            {
-                "Check": "Net Contents",
-                "Expected": net_contents,
-                "Detected": "Not checked yet",
-                "Result": "Not implemented",
-                "Notes": "Matching logic will be added in Phase 2."
-            },
+        results = verify_core_fields(
+            detected_text=detected_text,
+            brand_name=brand_name,
+            class_type=class_type,
+            alcohol_content=alcohol_content,
+            net_contents=net_contents,
+        )
+
+        results.append(
             {
                 "Check": "Government Warning",
                 "Expected": "Required" if warning_required else "Not required",
                 "Detected": "Not checked yet",
                 "Result": "Not implemented",
                 "Notes": "Warning validation will be added in Phase 3."
-            },
-        ]
+            }
+        )
 
-        results_df = pd.DataFrame(results)
+        core_results = results[:-1]
+        overall_result = determine_overall_result(core_results)
 
         st.subheader("Overall Result")
-        st.warning("Verification logic not implemented yet.")
 
+        if overall_result == "PASS":
+            st.success("PASS — Core application fields appear to match the label.")
+        elif overall_result == "MANUAL REVIEW RECOMMENDED":
+            st.warning("MANUAL REVIEW RECOMMENDED — One or more fields need human review.")
+        else:
+            st.error("FAIL — One or more expected fields were not found or did not match.")
+
+        results_df = pd.DataFrame(results)
         st.dataframe(results_df, use_container_width=True)
 
-        st.success("Phase 1 check complete: the form and results table are working.")
+        st.caption(
+            "Note: Government warning validation is intentionally deferred to Phase 3."
+        )
