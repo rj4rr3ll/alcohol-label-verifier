@@ -88,7 +88,9 @@ def display_attention_items(results: list[dict]):
 
 def display_results_table(results: list[dict]):
     """
-    Display the verification results table.
+    Display the verification results table and provide a clean CSV export.
+    The UI uses icon-enhanced status labels, but the CSV uses plain text
+    to avoid encoding issues in Excel.
     """
     enhanced_results = add_result_icons(results)
     results_df = pd.DataFrame(enhanced_results)
@@ -116,7 +118,15 @@ def display_results_table(results: list[dict]):
         }
     )
 
-    csv_data = results_df[display_columns].to_csv(index=False).encode("utf-8")
+    csv_columns = [
+        "Check",
+        "Expected",
+        "Detected",
+        "Result",
+        "Notes",
+    ]
+
+    csv_data = results_df[csv_columns].to_csv(index=False).encode("utf-8-sig")
 
     st.download_button(
         label="Download Results CSV",
@@ -269,7 +279,12 @@ with single_tab:
         if ocr_ready:
             st.caption(f"OCR status: {ocr_message}")
 
-            if st.button("Run OCR on Uploaded Label", key="single_ocr_button"):
+            if st.button(
+                "Extract Text (OCR)",
+                 key="single_ocr_button",
+                 type="primary",
+                 help="Use OCR to pull label text from the uploaded image into the editable review box below."
+            ):
                 with st.spinner("Extracting text from label image..."):
                     try:
                         extracted_text = extract_text_from_uploaded_image(uploaded_file)
