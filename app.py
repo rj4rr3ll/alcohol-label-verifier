@@ -3,6 +3,7 @@ import pandas as pd
 
 from src.matching import verify_core_fields, determine_overall_result
 from src.warning_check import verify_government_warning
+from src.ocr import extract_text_from_uploaded_image, get_ocr_status
 
 
 st.set_page_config(
@@ -18,8 +19,11 @@ st.write(
 )
 
 st.info(
-    "Phase 3: Core field matching and government warning validation are enabled. OCR will be added later."
+    "Phase 4: OCR is enabled. Uploaded label images can be processed, and extracted text can be reviewed before verification."
 )
+
+if "detected_text" not in st.session_state:
+    st.session_state.detected_text = ""
 
 st.divider()
 
@@ -47,11 +51,37 @@ st.header("1. Upload Label Artwork")
 uploaded_file = st.file_uploader(
     "Upload a label image",
     type=["png", "jpg", "jpeg"],
-    help="OCR is not active yet. Upload preview only in Phase 2."
+    help="Upload a clear image of the alcohol label."
 )
 
 if uploaded_file is not None:
     st.image(uploaded_file, caption="Uploaded Label Preview", use_container_width=True)
+
+    ocr_ready, ocr_message = get_ocr_status()
+
+    if ocr_ready:
+        st.caption(f"OCR status: {ocr_message}")
+
+        if st.button("Run OCR on Uploaded Label"):
+            with st.spinner("Extracting text from label image..."):
+                try:
+                    extracted_text = extract_text_from_uploaded_image(uploaded_file)
+                    st.session_state.detected_text = extracted_text
+
+                    if extracted_text:
+                        st.success("OCR complete. Review and edit the extracted text below if needed.")
+                    else:
+                        st.warning(
+                            "OCR completed but did not detect readable text. "
+                            "You can still paste label text manually below."
+                        )
+
+                except Exception as error:
+                    st.error(f"OCR failed: {error}")
+                    st.info("You can still paste label text manually below.")
+    else:
+        st.warning(ocr_message)
+        st.info("Manual text entry remains available below.")
 else:
     st.caption("No label image uploaded yet.")
 
@@ -63,8 +93,9 @@ st.divider()
 st.header("2. Enter Detected Label Text")
 
 detected_text = st.text_area(
-    "Paste or type the text visible on the label",
+    "Review, edit, paste, or type the text visible on the label",
     height=220,
+    key="detected_text",
     placeholder=(
         "Example:\n"
         "OLD TOM DISTILLERY\n"
