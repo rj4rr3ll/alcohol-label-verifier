@@ -87,6 +87,21 @@ class TestMatchingLogic(unittest.TestCase):
         )
         result = verify_government_warning(detected, warning_required=True)
         self.assertEqual(result["Result"], REVIEW)
+    
+    def test_alcohol_marker_without_number_requires_review(self):
+        detected = "% ALC/VOL"
+        result = verify_alcohol_content("45%", detected)
+        self.assertEqual(result["Result"], REVIEW)
+    
+    def test_abv_ocr_confuses_s_for_five(self):
+        detected = "4S% ALC/VOL"
+        result = verify_alcohol_content("45%", detected)
+        self.assertEqual(result["Result"], PASS)
+
+    def test_abv_ocr_confuses_o_for_zero_in_proof(self):
+        detected = "9O Proof"
+        result = verify_alcohol_content("45%", detected)
+        self.assertEqual(result["Result"], PASS)
 
 
 if __name__ == "__main__":

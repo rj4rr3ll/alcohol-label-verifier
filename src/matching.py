@@ -33,13 +33,14 @@ def normalize_text(value: str) -> str:
 
 def get_best_matching_line(expected: str, detected_text: str) -> tuple[str, int]:
     """
-    Compare expected text against each OCR/detected text line.
+    Compare expected text against each detected/OCR text line.
     Return the best matching line and score.
     """
     if not expected or not detected_text:
         return "", 0
 
     lines = [line.strip() for line in detected_text.splitlines() if line.strip()]
+
     if not lines:
         return "", 0
 
@@ -50,6 +51,7 @@ def get_best_matching_line(expected: str, detected_text: str) -> tuple[str, int]
 
     for line in lines:
         score = fuzz.token_set_ratio(normalized_expected, normalize_text(line))
+
         if score > best_score:
             best_score = score
             best_line = line
@@ -75,7 +77,7 @@ def verify_text_field(
             "Expected": "",
             "Detected": "",
             "Result": REVIEW,
-            "Notes": "No expected value was provided."
+            "Notes": "No expected value was provided.",
         }
 
     if not detected_text or not detected_text.strip():
@@ -84,7 +86,7 @@ def verify_text_field(
             "Expected": expected,
             "Detected": "",
             "Result": FAIL,
-            "Notes": "No label text was provided for comparison."
+            "Notes": "No label text was provided for comparison.",
         }
 
     normalized_expected = normalize_text(expected)
@@ -96,7 +98,7 @@ def verify_text_field(
             "Expected": expected,
             "Detected": expected,
             "Result": PASS,
-            "Notes": "Expected value found on label."
+            "Notes": "Expected value found on label.",
         }
 
     best_line, score = get_best_matching_line(expected, detected_text)
@@ -116,39 +118,127 @@ def verify_text_field(
         "Expected": expected,
         "Detected": best_line,
         "Result": result,
-        "Notes": f"{notes} Match score: {score}."
+        "Notes": f"{notes} Match score: {score}.",
     }
+
+
+def normalize_ocr_number(value: str) -> float | None:
+    """
+    Normalize numeric OCR mistakes in alcohol-content contexts.
+
+    Examples:
+    - 4S -> 45
+    - 9O -> 90
+    - 7S0 -> 750
+    """
+    if not value:
+        return None
+
+    normalized = str(value).upper()
+    normalized = normalized.replace("O", "0")
+    normalized = normalized.replace("I", "1")
+    normalized = normalized.replace("L", "1")
+    normalized = normalized.replace("|", "1")
+    normalized = normalized.replace("S", "5")
+    normalized = normalized.replace(",", ".")
+    normalized = re.sub(r"[^0-9.]", "", normalized)
+
+    if not normalized:
+        return None
+
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
 
 
 def extract_percent_values(text: str) -> list[float]:
     """
-    Extract percentage values such as 45%, 45.0%, or 45 percent.
+    Extract percentage values such as:
+    - 45%
+    - 45.0%
+    - 45 percent
+    - 45% ABV
+    - 45% Alc./Vol.
+    - 4S% ALC/VOL
     """
     if not text:
         return []
 
-    pattern = r"(\d+(?:\.\d+)?)\s*(?:%|PERCENT)"
-    matches = re.findall(pattern, text.upper())
+    text_upper = text.upper()
 
-    return [float(match) for match in matches]
+    patterns = [
+        r"\b([0-9OILS|]{1,3}(?:[.,][0-9OILS|]+)?)\s*%",
+        r"\b([0-9OILS|]{1,3}(?:[.,][0-9OILS|]+)?)\s*PERCENT\b",
+        r"\b([0-9OILS|]{1,3}(?:[.,][0-9OILS|]+)?)\s*%?\s*(?:ALC\.?\s*/?\s*VOL\.?|ABV)\b",
+    ]
+
+    values = []
+
+    for pattern in patterns:
+        matches = re.findall(pattern, text_upper)
+
+        for match in matches:
+            number = normalize_ocr_number(match)
+
+            if number is not None and 0 < number <= 100:
+                values.append(number)
+
+    unique_values = []
+
+    for value in values:
+        if value not in unique_values:
+            unique_values.append(value)
+
+    return unique_values
 
 
 def extract_proof_values(text: str) -> list[float]:
     """
-    Extract proof values such as 90 Proof.
+    Extract proof values such as:
+    - 90 Proof
+    - 9O Proof
     """
     if not text:
         return []
 
-    pattern = r"(\d+(?:\.\d+)?)\s*PROOF"
-    matches = re.findall(pattern, text.upper())
+    text_upper = text.upper()
 
-    return [float(match) for match in matches]
+    pattern = r"\b([0-9OILS|]{1,3}(?:[.,][0-9OILS|]+)?)\s*PROOF\b"
+    matches = re.findall(pattern, text_upper)
+
+    values = []
+
+    for match in matches:
+        number = normalize_ocr_number(match)
+
+        if number is not None and 0 < number <= 200:
+            values.append(number)
+
+    unique_values = []
+
+    for value in values:
+        if value not in unique_values:
+            unique_values.append(value)
+
+    return unique_values
+
+
+def format_number_for_display(value: float) -> str:
+    """
+    Format numbers cleanly for display.
+    Example: 45.0 -> 45
+    """
+    if float(value).is_integer():
+        return str(int(value))
+
+    return str(value)
 
 
 def verify_alcohol_content(expected: str, detected_text: str) -> dict:
     """
     Verify alcohol content using ABV percentages and proof.
+
     For distilled spirits, proof is approximately 2x ABV.
     Example: 45% ABV = 90 proof.
     """
@@ -160,7 +250,7 @@ def verify_alcohol_content(expected: str, detected_text: str) -> dict:
             "Expected": "",
             "Detected": "",
             "Result": REVIEW,
-            "Notes": "No expected alcohol content was provided."
+            "Notes": "No expected alcohol content was provided.",
         }
 
     expected_percentages = extract_percent_values(expected)
@@ -170,16 +260,26 @@ def verify_alcohol_content(expected: str, detected_text: str) -> dict:
     detected_proofs = extract_proof_values(detected_text)
 
     detected_summary_parts = []
+
     if detected_percentages:
         detected_summary_parts.append(
-            "Percent values: " + ", ".join(str(x).rstrip("0").rstrip(".") + "%" for x in detected_percentages)
-        )
-    if detected_proofs:
-        detected_summary_parts.append(
-            "Proof values: " + ", ".join(str(x).rstrip("0").rstrip(".") for x in detected_proofs)
+            "Percent values: "
+            + ", ".join(
+                f"{format_number_for_display(value)}%"
+                for value in detected_percentages
+            )
         )
 
-    detected_summary = "; ".join(detected_summary_parts) if detected_summary_parts else ""
+    if detected_proofs:
+        detected_summary_parts.append(
+            "Proof values: "
+            + ", ".join(
+                format_number_for_display(value)
+                for value in detected_proofs
+            )
+        )
+
+    detected_summary = "; ".join(detected_summary_parts)
 
     for expected_abv in expected_percentages:
         for detected_abv in detected_percentages:
@@ -189,7 +289,7 @@ def verify_alcohol_content(expected: str, detected_text: str) -> dict:
                     "Expected": expected,
                     "Detected": detected_summary,
                     "Result": PASS,
-                    "Notes": "Expected ABV found on label."
+                    "Notes": "Expected ABV found on label.",
                 }
 
         for detected_proof in detected_proofs:
@@ -199,7 +299,7 @@ def verify_alcohol_content(expected: str, detected_text: str) -> dict:
                     "Expected": expected,
                     "Detected": detected_summary,
                     "Result": PASS,
-                    "Notes": "Expected ABV matches detected proof."
+                    "Notes": "Expected ABV matches detected proof.",
                 }
 
     for expected_proof in expected_proofs:
@@ -210,7 +310,7 @@ def verify_alcohol_content(expected: str, detected_text: str) -> dict:
                     "Expected": expected,
                     "Detected": detected_summary,
                     "Result": PASS,
-                    "Notes": "Expected proof found on label."
+                    "Notes": "Expected proof found on label.",
                 }
 
         for detected_abv in detected_percentages:
@@ -220,7 +320,7 @@ def verify_alcohol_content(expected: str, detected_text: str) -> dict:
                     "Expected": expected,
                     "Detected": detected_summary,
                     "Result": PASS,
-                    "Notes": "Expected proof matches detected ABV."
+                    "Notes": "Expected proof matches detected ABV.",
                 }
 
     if detected_percentages or detected_proofs:
@@ -229,7 +329,22 @@ def verify_alcohol_content(expected: str, detected_text: str) -> dict:
             "Expected": expected,
             "Detected": detected_summary,
             "Result": REVIEW,
-            "Notes": "Alcohol content found, but it does not clearly match the expected value."
+            "Notes": "Alcohol content found, but it does not clearly match the expected value.",
+        }
+
+    alcohol_marker_pattern = r"(%|ALC\.?\s*/?\s*VOL\.?|ABV|PROOF)"
+
+    if detected_text and re.search(alcohol_marker_pattern, detected_text.upper()):
+        return {
+            "Check": "Alcohol Content",
+            "Expected": expected,
+            "Detected": "Alcohol content marker found, but numeric value was not clearly captured",
+            "Result": REVIEW,
+            "Notes": (
+                "OCR detected an alcohol-content marker such as '%', 'ALC/VOL', "
+                "or 'PROOF', but did not capture a clear numeric value. "
+                "Manual review or text correction is recommended."
+            ),
         }
 
     return {
@@ -237,7 +352,7 @@ def verify_alcohol_content(expected: str, detected_text: str) -> dict:
         "Expected": expected,
         "Detected": "",
         "Result": FAIL,
-        "Notes": "Alcohol content was not found on the label."
+        "Notes": "Alcohol content was not found on the label.",
     }
 
 
@@ -274,7 +389,7 @@ def verify_net_contents(expected: str, detected_text: str) -> dict:
             "Expected": "",
             "Detected": "",
             "Result": REVIEW,
-            "Notes": "No expected net contents value was provided."
+            "Notes": "No expected net contents value was provided.",
         }
 
     normalized_expected = normalize_net_contents(expected)
@@ -286,7 +401,7 @@ def verify_net_contents(expected: str, detected_text: str) -> dict:
             "Expected": expected,
             "Detected": expected,
             "Result": PASS,
-            "Notes": "Expected net contents found on label."
+            "Notes": "Expected net contents found on label.",
         }
 
     best_line, score = get_best_matching_line(expected, detected_text)
@@ -306,7 +421,7 @@ def verify_net_contents(expected: str, detected_text: str) -> dict:
         "Expected": expected,
         "Detected": best_line,
         "Result": result,
-        "Notes": f"{notes} Match score: {score}."
+        "Notes": f"{notes} Match score: {score}.",
     }
 
 
@@ -318,7 +433,7 @@ def verify_core_fields(
     net_contents: str,
 ) -> list[dict]:
     """
-    Run all Phase 2 core field checks.
+    Run all core field checks.
     """
     return [
         verify_text_field("Brand Name", brand_name, detected_text),
@@ -336,6 +451,8 @@ def determine_overall_result(results: list[dict]) -> str:
 
     if FAIL in result_values:
         return "FAIL"
+
     if REVIEW in result_values:
         return "MANUAL REVIEW RECOMMENDED"
+
     return "PASS"
