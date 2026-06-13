@@ -216,6 +216,14 @@ with st.sidebar:
     st.warning(
         "Prototype only: Human compliance review remains required."
     )
+    st.info(
+        "Privacy note: Uploaded files are processed during the active session "
+        "and are not intentionally stored by this prototype."
+    )
+    st.info(
+        "Security note: This prototype does not require API keys, external AI services, "
+        "or persistent document storage."
+    )
     st.caption(
         "Current phase: Single-label OCR and batch verification workflow."
     )
@@ -421,6 +429,12 @@ with batch_tab:
 
             st.subheader("CSV Preview")
             st.dataframe(batch_df, use_container_width=True, hide_index=True)
+            
+            if len(batch_df) > 25:
+                st.warning(
+                    "Prototype performance note: This CSV contains more than 25 rows. "
+                    "For production use, large batches should be processed asynchronously."
+                )
 
             missing_columns = validate_batch_dataframe(batch_df)
 
@@ -440,6 +454,13 @@ with batch_tab:
 
     if batch_images:
         st.caption(f"{len(batch_images)} image file(s) uploaded.")
+
+        if len(batch_images) > 25:
+            st.warning(
+                "Prototype performance note: More than 25 images were uploaded. "
+                "Large production batches would require background processing, queueing, "
+                "and monitoring."
+            )
 
     process_batch_button = st.button(
         "Process Batch",
