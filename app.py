@@ -205,9 +205,6 @@ st.write(
     "Prototype tool for verifying alcohol label information against expected application fields."
 )
 
-st.info(
-    "Phase 6: Single-label review and batch label review are enabled."
-)
 
 if "detected_text" not in st.session_state:
     st.session_state.detected_text = ""
