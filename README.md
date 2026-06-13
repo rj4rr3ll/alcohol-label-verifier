@@ -24,15 +24,32 @@ Deployment URL: https://alcohol-label-verifier-vrrps9ziiy96hyapfkk7vd.streamlit.
 * Process small batches using a CSV plus matching image files.
 * Download batch verification results as CSV.
 
-## Core Checks
+## TTB Labeling Coverage and Core Checks
 
-The prototype checks the following label elements:
+This prototype focuses on high-volume text-matching checks that are well suited for an AI-assisted alcohol label review workflow. It is not intended to implement the full set of TTB beverage-specific labeling rules or make final regulatory determinations.
+
+TTB distilled spirits labeling guidance identifies several mandatory label information categories, including brand name, class/type designation, alcohol content, health warning statement, name and address, net contents, and country of origin for imports. Some requirements are conditional, such as age statements, color ingredient disclosures, and commodity statements.
+
+This prototype currently verifies:
 
 * Brand name
 * Class/type designation
-* Alcohol content
+* Alcohol content and proof equivalency
 * Net contents
-* Government health warning statement
+* Government health warning text and heading capitalization
+
+This prototype does not currently verify:
+
+* Same-field-of-vision placement for brand name, class/type designation, and alcohol content
+* Font size, bold formatting, continuous paragraph layout, contrast, or exact label placement
+* Name and address
+* Country of origin for imports
+* Age statements
+* Color ingredient disclosures
+* Commodity statements
+* Full beverage-type-specific TTB rule coverage
+
+These limitations are documented intentionally. The app is designed to assist human review by identifying likely mismatches and cases requiring manual review.
 
 ## Technical Approach
 
@@ -124,7 +141,7 @@ sample_data/labels/old_tom_test_label.png
 
 ## Result Categories
 
-The app uses three result categories:
+The app uses three result categories.
 
 ### PASS
 
@@ -156,6 +173,8 @@ Government Warning:
 
 as a failure because the warning heading must appear in all caps.
 
+The prototype checks warning text and capitalization only. It does not verify bold formatting, font size, contrast, continuous paragraph layout, or physical label placement.
+
 ## Security and Privacy Notes
 
 * This is a standalone prototype and does not integrate with COLA.
@@ -176,7 +195,7 @@ as a failure because the warning heading must appear in all caps.
 
 * OCR accuracy depends on image quality.
 * Small, curved, angled, low-contrast, or blurry text may be misread.
-* The app does not verify font size, bold formatting, or exact label placement.
+* The app does not verify font size, bold formatting, continuous paragraph layout, contrast, or exact label placement.
 * The app does not implement the full set of beverage-specific TTB labeling rules.
 * The app does not make final regulatory determinations.
 * Batch mode is intended for small proof-of-concept batches.
@@ -233,6 +252,12 @@ The tests cover:
 * Alcohol content matching
 * Net contents matching
 * Government warning validation
+
+## References
+
+* TTB Distilled Spirits Labeling guidance: https://www.ttb.gov/regulated-commodities/beverage-alcohol/distilled-spirits/labeling
+* TTB Distilled Spirits Mandatory Label Information guidance: https://www.ttb.gov/regulated-commodities/beverage-alcohol/distilled-spirits/ds-labeling-home/ds-brand-label
+* TTB Distilled Spirits Health Warning Statement guidance: https://www.ttb.gov/regulated-commodities/beverage-alcohol/distilled-spirits/ds-labeling-home/ds-health-warning
 
 ## Prototype Disclaimer
 
