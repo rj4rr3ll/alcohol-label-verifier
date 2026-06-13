@@ -10,7 +10,7 @@ This application does not integrate with COLA or any Treasury production system.
 
 ## Live Demo
 
-Deployment URL: To be added after deployment.
+Deployment URL: https://alcohol-label-verifier-vrrps9ziiy96hyapfkk7vd.streamlit.app/
 
 ## Features
 
