@@ -1,0 +1,24 @@
+[
+  {
+    "file_name": "abc_rye_whisky_label.jpg",
+    "brand_name": "ABC DISTILLERY",
+    "class_type": "STRAIGHT RYE WHISKY",
+    "alcohol_content": "45% ALC/VOL",
+    "net_contents": "750 ML",
+    "name_address": "ABC DISTILLERY FREDERICK, MD",
+    "country_of_origin": "",
+    "warning_required": "true",
+    "application_form": "TTB F 5100.31 test data packet"
+  },
+  {
+    "file_name": "12345_rum_liqueur_label.jpg",
+    "brand_name": "12345 IMPORTS",
+    "class_type": "RUM WITH COCONUT LIQUEUR",
+    "alcohol_content": "18% ALC/VOL",
+    "net_contents": "200 ML",
+    "name_address": "IMPORTED BY 12345 IMPORTS MIAMI, FL",
+    "country_of_origin": "Canada",
+    "warning_required": "true",
+    "application_form": "TTB F 5100.31 test data packet"
+  }
+]

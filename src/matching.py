@@ -15,6 +15,9 @@ def normalize_text(value: str) -> str:
     - Replace curly punctuation
     - Remove most punctuation
     - Collapse whitespace
+
+    Percent signs are preserved because they are meaningful for alcohol-content
+    checks.
     """
     if not value:
         return ""
@@ -31,6 +34,98 @@ def normalize_text(value: str) -> str:
     return text
 
 
+def tokenize_normalized_text(value: str) -> list[str]:
+    """
+    Return normalized alphanumeric tokens.
+
+    Token-level checks prevent unsafe substring matches such as OLD TOM matching
+    OLD TOMATO, while still allowing punctuation/case differences such as
+    Stone's Throw versus STONE'S THROW.
+    """
+    normalized = normalize_text(value)
+    return re.findall(r"[A-Z0-9%]+", normalized)
+
+
+def contains_normalized_phrase(expected: str, detected_text: str) -> bool:
+    """
+    Return True when the expected value appears as a full token sequence inside
+    the detected text.
+
+    This is stricter than a raw substring check. It allows:
+    - OLD TOM DISTILLERY inside OLD TOM DISTILLERY / 750 ML
+    - Stone's Throw matching STONE'S THROW
+
+    It does not allow:
+    - OLD TOM matching OLD TOMATO
+    - RYE WHISKY passing when only WHISKY appears
+    """
+    normalized_expected = normalize_text(expected)
+    normalized_detected = normalize_text(detected_text)
+
+    if not normalized_expected or not normalized_detected:
+        return False
+
+    escaped = re.escape(normalized_expected).replace(r"\ ", r"\s+")
+    pattern = rf"(?<![A-Z0-9]){escaped}(?![A-Z0-9])"
+    return re.search(pattern, normalized_detected) is not None
+
+
+def token_coverage(expected: str, candidate: str) -> float:
+    """
+    Measure how many expected tokens are present in the candidate line.
+
+    Duplicate words are not important for these label fields, so set coverage is
+    sufficient and keeps the behavior easy to explain.
+    """
+    expected_tokens = set(tokenize_normalized_text(expected))
+    candidate_tokens = set(tokenize_normalized_text(candidate))
+
+    if not expected_tokens:
+        return 0.0
+
+    return len(expected_tokens.intersection(candidate_tokens)) / len(expected_tokens)
+
+
+def calculate_line_match_score(expected: str, candidate: str) -> int:
+    """
+    Score a candidate OCR line without allowing subset matches to pass.
+
+    The previous implementation used token_set_ratio, which can return 100 when
+    the candidate contains only a subset of the expected phrase. For compliance
+    review, that is too permissive: "Whisky" should not pass for
+    "Straight Rye Whisky".
+
+    This score favors full-string similarity and token order similarity, then
+    caps the result when too many expected tokens are missing.
+    """
+    normalized_expected = normalize_text(expected)
+    normalized_candidate = normalize_text(candidate)
+
+    if not normalized_expected or not normalized_candidate:
+        return 0
+
+    if normalized_expected == normalized_candidate:
+        return 100
+
+    if contains_normalized_phrase(expected, candidate):
+        return 100
+
+    ratio_score = fuzz.ratio(normalized_expected, normalized_candidate)
+    token_sort_score = fuzz.token_sort_ratio(normalized_expected, normalized_candidate)
+    score = max(ratio_score, token_sort_score)
+
+    coverage = token_coverage(expected, candidate)
+
+    # If the candidate is missing a meaningful share of the expected words,
+    # never let it pass solely because the remaining word is highly similar.
+    if coverage < 0.50:
+        score = min(score, 60)
+    elif coverage < 0.75:
+        score = min(score, 82)
+
+    return int(round(score))
+
+
 def get_best_matching_line(expected: str, detected_text: str) -> tuple[str, int]:
     """
     Compare expected text against each detected/OCR text line.
@@ -44,19 +139,17 @@ def get_best_matching_line(expected: str, detected_text: str) -> tuple[str, int]
     if not lines:
         return "", 0
 
-    normalized_expected = normalize_text(expected)
-
     best_line = ""
     best_score = 0
 
     for line in lines:
-        score = fuzz.token_set_ratio(normalized_expected, normalize_text(line))
+        score = calculate_line_match_score(expected, line)
 
         if score > best_score:
             best_score = score
             best_line = line
 
-    return best_line, int(best_score)
+    return best_line, best_score
 
 
 def verify_text_field(
@@ -67,7 +160,12 @@ def verify_text_field(
     review_threshold: int = 75,
 ) -> dict:
     """
-    Generic field verification using normalized exact match and fuzzy matching.
+    Generic field verification using normalized full-token matching and fuzzy
+    matching.
+
+    The function is intentionally conservative. Clear normalized matches pass,
+    close OCR/case/punctuation differences can pass, partial or uncertain
+    matches are routed to manual review, and missing values fail.
     """
     expected = expected.strip() if expected else ""
 
@@ -89,10 +187,7 @@ def verify_text_field(
             "Notes": "No label text was provided for comparison.",
         }
 
-    normalized_expected = normalize_text(expected)
-    normalized_detected = normalize_text(detected_text)
-
-    if normalized_expected in normalized_detected:
+    if contains_normalized_phrase(expected, detected_text):
         return {
             "Check": check_name,
             "Expected": expected,
@@ -395,7 +490,7 @@ def verify_net_contents(expected: str, detected_text: str) -> dict:
     normalized_expected = normalize_net_contents(expected)
     normalized_detected = normalize_net_contents(detected_text)
 
-    if normalized_expected and normalized_expected in normalized_detected:
+    if contains_normalized_phrase(normalized_expected, normalized_detected):
         return {
             "Check": "Net Contents",
             "Expected": expected,
@@ -425,22 +520,99 @@ def verify_net_contents(expected: str, detected_text: str) -> dict:
     }
 
 
+def verify_optional_text_field(
+    check_name: str,
+    expected: str,
+    detected_text: str,
+    pass_threshold: int = 92,
+    review_threshold: int = 75,
+) -> dict | None:
+    """
+    Verify an optional expected field only when the reviewer/application provided
+    a value.
+
+    Optional fields improve label coverage without penalizing applications that do
+    not include a value in the prototype workflow.
+    """
+    expected = expected.strip() if expected else ""
+
+    if not expected:
+        return None
+
+    return verify_text_field(
+        check_name=check_name,
+        expected=expected,
+        detected_text=detected_text,
+        pass_threshold=pass_threshold,
+        review_threshold=review_threshold,
+    )
+
+
+def verify_name_address(expected: str, detected_text: str) -> dict | None:
+    """
+    Verify the expected bottler/producer/importer name and address when provided.
+
+    This prototype treats the value as an optional text-matching check. It does
+    not decide which address statement is legally required for a given beverage
+    or business role.
+    """
+    return verify_optional_text_field(
+        "Name/Address",
+        expected,
+        detected_text,
+        pass_threshold=88,
+        review_threshold=72,
+    )
+
+
+def verify_country_of_origin(expected: str, detected_text: str) -> dict | None:
+    """
+    Verify country of origin text when provided.
+
+    Country of origin is most relevant for imported products. The check is kept
+    optional because domestic products may not have an expected country-of-origin
+    value in the application data.
+    """
+    return verify_optional_text_field(
+        "Country of Origin",
+        expected,
+        detected_text,
+        pass_threshold=90,
+        review_threshold=75,
+    )
+
+
 def verify_core_fields(
     detected_text: str,
     brand_name: str,
     class_type: str,
     alcohol_content: str,
     net_contents: str,
+    name_address: str = "",
+    country_of_origin: str = "",
 ) -> list[dict]:
     """
-    Run all core field checks.
+    Run core field checks plus optional label checks when expected values are
+    provided.
     """
-    return [
+    results = [
         verify_text_field("Brand Name", brand_name, detected_text),
         verify_text_field("Class/Type", class_type, detected_text),
         verify_alcohol_content(alcohol_content, detected_text),
         verify_net_contents(net_contents, detected_text),
     ]
+
+    optional_results = [
+        verify_name_address(name_address, detected_text),
+        verify_country_of_origin(country_of_origin, detected_text),
+    ]
+
+    results.extend(
+        result for result in optional_results
+        if result is not None
+    )
+
+    return results
 
 
 def determine_overall_result(results: list[dict]) -> str:
