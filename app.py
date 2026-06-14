@@ -760,13 +760,13 @@ with single_tab:
             placeholder="750 mL",
         )
         name_address = st.text_input(
-            "Name/Address Optional",
+            "Name/Address (optional)",
             key="expected_name_address",
             placeholder="OLD TOM DISTILLERY - LOUISVILLE KY",
             help="Optional text check for bottler, producer, importer, or applicant name/address statements.",
         )
         country_of_origin = st.text_input(
-            "Country of Origin Optional",
+            "Country of Origin (optional)",
             key="expected_country_of_origin",
             placeholder="United States",
             help="Optional text check, most useful for imported products.",
